@@ -1,0 +1,9 @@
+.cproject
+.project
+.settings
+clone
+build
+include
+lib
+bseq.h
+minimap.h

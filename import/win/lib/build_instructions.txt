@@ -1,0 +1,24 @@
+WINDOWS
+=======
+
+zlib
+-----
+Comes with MinKNOW libraries, see there. Re-building together with the other
+libraries is not absolutely necessary, but desirable when the compiler version
+changes. MSVC links to a runtime library that is specific to the compiler
+version (currently msvcrt140.dll), and in best case all our libraries should
+use the same runtime.
+
+
+pthread
+-------
+* in Git Bash:
+  git clone https://git.code.sf.net/p/pthreads4w/code pthreads4w
+* In MSVC Developer Command Prompt, pthread directory:
+  "c:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" amd64
+  nmake clean VC
+  nmake clean VC-debug
+* copy resulting dll and lib files and the following header files:
+  pthread.h
+  sched.h
+  semaphore.h

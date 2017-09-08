@@ -1,0 +1,161 @@
+stages:
+  - test
+  - merge
+  - deploy
+
+.windows_dependencies: &windows_dependencies
+  variables:
+    BUILD_DIR: "msvc-build"
+    CMAKE_EXTRA_ARGS: "-A x64"
+    CMAKE_TOOLCHAIN: "Intel C++ Compiler 17.0"
+    PYTHON: "python"
+    ARTIFACT_FOLDER: win
+  before_script:
+    # ZLIB is included in MinKNOW libs
+    - gitlab-ci/get_mklibs.sh $(pwd)/../mklibs ofan albacore_msvc2015 win_vs2015_64
+    - export PATH=$PATH:$(pwd)/../mklibs/win_vs2015_64/lib:$(pwd)/lib
+    - export MKLIBS_DIR=$(pwd)/../mklibs/win_vs2015_64
+  tags:
+    - win10
+
+.linux_dependencies: &linux_dependencies
+  variables:
+    BUILD_DIR: "build"
+    ARTIFACT_FOLDER: manylinux
+  before_script:
+    - yum install -y zlib-devel
+  tags:
+    - docker
+
+.osx_dependencies: &osx_dependencies
+  variables:
+    BUILD_DIR: "osx-build"
+    ARTIFACT_FOLDER: osx
+  tags:
+    - osx
+
+.do_testing: &do_testing
+  stage: test
+  script:
+    - touch $BUILD_DIR
+    - rm -rf $BUILD_DIR && mkdir $BUILD_DIR
+    - cd $BUILD_DIR
+    # "${foo:+[...]}" is bash for "if foo exists then return [...]"
+    - if [ "$ARTIFACT_FOLDER" != "win" ]; then
+        export CMAKE_EXTRA_ARGS="-D CMAKE_BUILD_TYPE=Release $CMAKE_EXTRA_ARGS";
+      fi
+    - echo "$CMAKE_EXTRA_ARGS"
+    - cmake
+      $CMAKE_EXTRA_ARGS
+      ${CMAKE_PREFIX_PATH:+-DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH"}
+      ${CMAKE_TOOLCHAIN:+-T "$CMAKE_TOOLCHAIN"}
+      ..
+    - cmake --build . --target install --config Release
+    - if [ "$ARTIFACT_FOLDER" == "win" ]; then
+        cmake --build . --target install --config Debug;
+      fi
+    - ctest -C Release -VV || echo "minimap2 without any arguments will not return 0"
+    - cd ..
+    - mkdir $ARTIFACT_FOLDER
+    - cp -rv include $ARTIFACT_FOLDER
+    - cp -rv lib $ARTIFACT_FOLDER
+  artifacts:
+    paths:
+      - $ARTIFACT_FOLDER
+
+.do_merge_testing: &do_merge_testing
+  stage: merge
+  script:
+    - git config user.email "ofan-merge-tests@gitlab-ci"
+    - git config user.name "ofan-merge-tests"
+    - echo Trying to add ofan remote -- this may fail if it already exists, but that\'s ok.
+    - git remote add ofan https://git.oxfordnanolabs.local/ofan/ont_minimap2.git || true
+    - git fetch ofan
+    - git checkout ofan/master
+    - git merge $CI_BUILD_REF
+    - touch $BUILD_DIR
+    - rm -rf $BUILD_DIR && mkdir $BUILD_DIR
+    - cd $BUILD_DIR
+    - cmake
+      -D CMAKE_BUILD_TYPE=Release
+      $CMAKE_EXTRA_ARGS
+      ..
+    - cmake --build . --config Release
+#    - git clone https://git.oxfordnanolabs.local/ofan/ont_tp_binaries.git
+#    - ctest -C Release -VV
+  except:
+    - tags
+    - master@ofan/ont_minimap2
+
+linux_testing:manylinux:
+  image: docker-registry.oxfordnanolabs.local:5000/ont-base-ofan-manylinux:albcore
+  <<: *linux_dependencies
+  <<: *do_testing
+
+osx_testing:
+  <<: *osx_dependencies
+  <<: *do_testing
+
+windows_testing:
+  <<: *windows_dependencies
+  <<: *do_testing
+
+linux_merge_test:manylinux:
+  image: docker-registry.oxfordnanolabs.local:5000/ont-base-ofan-manylinux:albcore
+  <<: *linux_dependencies
+  <<: *do_merge_testing
+
+osx_merge_test:
+  <<: *osx_dependencies
+  <<: *do_merge_testing
+
+windows_merge_test:
+  <<: *windows_dependencies
+  <<: *do_merge_testing
+
+upload:
+  image: docker-registry.oxfordnanolabs.local:5000/ont-base-ofan-manylinux:albcore
+  stage: deploy
+  dependencies:
+    - linux_testing:manylinux
+    - osx_testing
+    - windows_testing
+  script:
+    - eval $(ssh-agent -s)
+    - ssh-add <(echo "$OFAN_TESTER_KEY")
+    - mkdir -p ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    - export CURRENT_DIR=$(pwd)
+    - export TP_BRANCH=ont_minimap2_$CI_BUILD_TAG
+    - export TP_BIN=tp_binaries
+    - touch $TP_BIN &&
+      rm -rf $TP_BIN &&
+      git clone git@git.oxfordnanolabs.local:ofan/ont_tp_binaries.git $TP_BIN &&
+      cd $TP_BIN &&
+      git fetch --all &&
+      git checkout -b $TP_BRANCH &&
+      cd $CURRENT_DIR
+    - export DEST=$TP_BIN/3rdparty
+    - for dir in "osx" "manylinux" "win";
+      do
+        if [ -d $dir ]; then
+          echo "Copying files from $dir" &&
+          cp -rv $dir/include/* $DEST/$dir/include &&
+          cp -rv $dir/lib/* $DEST/$dir/lib; fi;
+      done
+    - cd $TP_BIN &&
+      git config user.email "ofan_tester@oxfordnanolabs.local" &&
+      git config user.name "ofan_tester" &&
+      cd $CURRENT_DIR
+    - cd $TP_BIN &&
+      git add -A &&
+      git commit -m "$TP_BRANCH update" &&
+      git push origin $TP_BRANCH &&
+      cd $CURRENT_DIR
+  only:
+    - /^release_.*$/
+  except:
+    - branches
+  tags:
+    - docker
+
