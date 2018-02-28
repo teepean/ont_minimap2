@@ -3,7 +3,8 @@
 .settings
 clone
 build
-include
 lib
+include
 bseq.h
 minimap.h
+!lib/README.txt
