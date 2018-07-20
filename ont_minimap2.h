@@ -31,13 +31,19 @@
 extern "C" {
 #endif
 
-  /// loads index and returns a pointer to it. Call ontmm_unload_index() to free  the return value.
+  /** loads index and returns a pointer to it. Call ontmm_unload_index() to free  the return value.
+  */
   EXPORT mm_idx_t *ontmm_load_index(const char *index_filename);
 
+  /** Do the expensive idx_cal_max_occ operation once and cache the result
+  *  This avoids recalculating when initialising opt on each call to ontmm_align
+  */
+  EXPORT int32_t ontmm_cache_idx_occ_thres(const mm_idx_t *index);
+  
   /** call minimap2 alignment and returns SAM string (without header!).
   *  Call free() to free the return value.
   */
-  EXPORT char *ontmm_align(mm_bseq1_t query, const mm_idx_t *index);
+  EXPORT char *ontmm_align(mm_bseq1_t query, const mm_idx_t *index, const int32_t idxMidOcc);
 
   EXPORT void ontmm_unload_index(mm_idx_t *index);
 

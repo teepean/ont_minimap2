@@ -45,7 +45,7 @@ mm_idx_t *ontmm_load_index(const char *index_filename) {
   mm_verbose = 0;
 
   // see main.c:225sq.
-  int is_idx = mm_idx_is_idx(index_filename);
+  int64_t is_idx = mm_idx_is_idx(index_filename);
   if (is_idx < 0) return NULL;
 
   FILE *fpr = NULL;
@@ -57,7 +57,8 @@ mm_idx_t *ontmm_load_index(const char *index_filename) {
   int k = 15, bucket_bits = 14, n_threads = 3, is_hpc = 0, keep_name = 1;
   int w = (int)(.6666667 * k + .499);
   int minibatch_size = 200000000;
-  uint64_t batch_size = 4000000000ULL;
+  // Always build a single unsharded index
+  uint64_t batch_size = 0x7fffffffffffffffULL;
 
   mm_idx_t *mi = NULL;
   if (fpr) mi = mm_idx_load(fpr);
@@ -69,16 +70,24 @@ mm_idx_t *ontmm_load_index(const char *index_filename) {
   return mi;
 }
 
+int32_t ontmm_cache_idx_occ_thres(const mm_idx_t *index)
+{
+  // opt.mid_occ_frac=2e-4f is the only initialisation value required from mm_mapopt_init
+  return mm_idx_cal_max_occ(index, 2e-4f);
+}
+
+
 /** call minimap2 alignment and returns SAM string (without header!).
  *  Call free() to free the return value.
  */
-char *ontmm_align(mm_bseq1_t query, const mm_idx_t *index) {
+char *ontmm_align(mm_bseq1_t query, const mm_idx_t *index, const int32_t idxMidOcc) {
   // disable printing to stdout
   mm_verbose = 0;
 
   // see example.c:22
   mm_mapopt_t opt;
   mm_mapopt_init(&opt); // initialize mapping parameters
+  opt.mid_occ = idxMidOcc; // cached value as slow to calculate and invariant
   mm_mapopt_update(&opt, index); // this sets the maximum minimizer occurrence
   opt.flag |= MM_F_CIGAR;
   mm_tbuf_t *tbuf = mm_tbuf_init();
@@ -106,7 +115,11 @@ char *ontmm_align(mm_bseq1_t query, const mm_idx_t *index) {
       if (!r->p) return strdup("ERROR:alignment has not returned cigar string.");
       kstring_t sam_line;
       sam_line.l = sam_line.m = 0, sam_line.s = 0;
-      mm_write_sam(&sam_line, index, &query, r, n_reg, reg);
+      // Get the reg_idx for the updated 'mm_write_sam2' interface
+      int i;
+      for (i = 0; i < n_reg; ++i)
+        if (r == &reg[i]) break;
+      mm_write_sam2(&sam_line, index, &query, 0, i, 1, &n_reg, &reg, NULL, MM_F_OUT_MD);
       #ifndef NDEBUG
       printf("[ont_minimap2 lib] SAM line: %s\n", sam_line.s);
       #endif

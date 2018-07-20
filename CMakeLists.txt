@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.1.0)
 
 # This version matches the version of minimap2 used
 project(minimap2
-    VERSION 2.7
+    VERSION 2.10
     LANGUAGES C
 )
 
@@ -37,6 +37,13 @@ if (NOT EXISTS ${CMAKE_SOURCE_DIR}/clone)
 	    ${CMAKE_SOURCE_DIR}
 	    ARGS "clone https://github.com/lh3/minimap2.git clone"
 	)
+else()
+	exec_program(
+	    "${GIT_EXECUTABLE}"
+	    ${CMAKE_SOURCE_DIR}
+	    # We already have a clone; want to update branches
+	    ARGS "-C clone fetch"
+	)
 endif()
 
 exec_program(
@@ -44,11 +51,29 @@ exec_program(
     ${CMAKE_SOURCE_DIR}/clone
     ARGS "checkout v${PROJECT_VERSION}"
 )
+
+## Apply patches
+file(GLOB
+  PATCHES
+  LIST_DIRECTORIES false
+  RELATIVE ${CMAKE_SOURCE_DIR}
+  *.patch
+  )
+
+foreach(PATCH in ${PATCHES})
+  message(STATUS "Applying patch ${PATCH}")
+  exec_program(
+    "${GIT_EXECUTABLE}"
+    ${CMAKE_SOURCE_DIR}/clone
+    ARGS "apply ${CMAKE_SOURCE_DIR}/${PATCH}"
+    )
+endforeach()
+
 file(COPY
-	clone/minimap.h
-	clone/bseq.h
-	DESTINATION
-	${CMAKE_SOURCE_DIR}
+  clone/minimap.h
+  clone/bseq.h
+  DESTINATION
+  ${CMAKE_SOURCE_DIR}
 )
 
 ################################################################## set import and export folder ###
@@ -89,11 +114,11 @@ add_library(libminimap2
         clone/ksw2_extz2_sse.c
         clone/ksw2_extd2_sse.c
         clone/ksw2_exts2_sse.c
-        clone/ksw2_ll_sse.c
         clone/misc.c
         clone/bseq.c
         clone/sketch.c
         clone/sdust.c
+        clone/options.c
         clone/index.c
         clone/chain.c
         clone/align.c
@@ -102,6 +127,7 @@ add_library(libminimap2
         clone/format.c
         clone/pe.c
         clone/esterr.c
+        clone/ksw2_ll_sse.c
 )
 
 add_library(ont_minimap2
@@ -145,7 +171,9 @@ target_link_libraries(ont_minimap2
 )
 
 # suppress all warnings (DISABLE THIS DURING DEVELOPMENT!)
-set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -w")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w")
+# strip libraries
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -s")
 
 if(WIN32)
 	add_definitions(-DHAVE_STRUCT_TIMESPEC)
@@ -194,4 +222,8 @@ install(
 	RUNTIME DESTINATION lib
 	LIBRARY DESTINATION lib
 	ARCHIVE DESTINATION lib
+)
+install(
+    FILES "MINIMAP2_LICENSE"
+    DESTINATION lib
 )

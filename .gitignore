@@ -7,4 +7,5 @@ lib
 include
 bseq.h
 minimap.h
+*~
 !lib/README.txt
