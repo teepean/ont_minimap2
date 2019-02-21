@@ -105,7 +105,7 @@ char *ontmm_align(mm_bseq1_t query, const mm_idx_t *index, const int32_t idxMidO
     str_copy(&sam_string, query.name, query.name + strlen(query.name));
     str_copy(&sam_string, empty_sam, empty_sam + strlen(empty_sam));
   }
-  else
+  else {
     // traverse hits and print them out
     for (j = 0; j < n_reg; ++j) {
       const mm_reg1_t *r = &reg[j];
@@ -126,7 +126,16 @@ char *ontmm_align(mm_bseq1_t query, const mm_idx_t *index, const int32_t idxMidO
       str_copy(&sam_string, sam_line.s, sam_line.s + sam_line.l);
       char* newline = "\n";
       str_copy(&sam_string, newline, newline+1);
+      // free the sam line.
+      free(sam_line.s);
     }
+    // Free the mm_reg1_t structures.
+    for (j = 0; j < n_reg; ++j) {
+      mm_reg1_t *r = &reg[j];
+      free(r->p);
+    }
+    free(reg);
+  }
   char* endstring = "\0";
   str_copy(&sam_string, endstring, endstring+1);
   mm_tbuf_destroy(tbuf);

@@ -1,10 +1,14 @@
 cmake_minimum_required(VERSION 3.1.0)
 
-# This version matches the version of minimap2 used
+# This version should match the version of minimap2 used as closely as possible.
+# It might not match if we have to update the ont_minimap2 project itself.
 project(minimap2
-    VERSION 2.10
+    VERSION 2.10.1
     LANGUAGES C
 )
+
+# This is the reference of the minimap2 repo that we'll build into the library.
+set(MINIMAP2_REF "v2.10")
 
 include(FindZLIB)
 
@@ -31,13 +35,22 @@ if (${_index} GREATER -1)
 
 find_package(Git REQUIRED)
 
+option(APPLY_PATCHES
+  "Apply patches to a new minimap clone. We won't run this if the repo has already been checked out"
+  OFF
+)
+
 if (NOT EXISTS ${CMAKE_SOURCE_DIR}/clone)
+        message(STATUS "Checking out new clone of minimap2")
 	exec_program(
 	    "${GIT_EXECUTABLE}"
 	    ${CMAKE_SOURCE_DIR}
+	    # We've got a local fork of the main repo
 	    ARGS "clone https://github.com/lh3/minimap2.git clone"
 	)
+        set(APPLY_PATCHES "ON")
 else()
+        message(STATUS "Existing clone of minimap2 found -- fetching without applying patches")
 	exec_program(
 	    "${GIT_EXECUTABLE}"
 	    ${CMAKE_SOURCE_DIR}
@@ -49,25 +62,28 @@ endif()
 exec_program(
     "${GIT_EXECUTABLE}"
     ${CMAKE_SOURCE_DIR}/clone
-    ARGS "checkout v${PROJECT_VERSION}"
+    ARGS "checkout ${MINIMAP2_REF}"
 )
 
 ## Apply patches
-file(GLOB
-  PATCHES
-  LIST_DIRECTORIES false
-  RELATIVE ${CMAKE_SOURCE_DIR}
-  *.patch
-  )
-
-foreach(PATCH in ${PATCHES})
-  message(STATUS "Applying patch ${PATCH}")
-  exec_program(
-    "${GIT_EXECUTABLE}"
-    ${CMAKE_SOURCE_DIR}/clone
-    ARGS "apply ${CMAKE_SOURCE_DIR}/${PATCH}"
+if(APPLY_PATCHES)
+  file(GLOB
+    PATCHES
+    LIST_DIRECTORIES false
+    RELATIVE ${CMAKE_SOURCE_DIR}
+    *.patch
     )
-endforeach()
+
+  foreach(PATCH ${PATCHES})
+    message(STATUS "Applying patch ${PATCH}")
+    exec_program(
+      "${GIT_EXECUTABLE}"
+      ${CMAKE_SOURCE_DIR}/clone
+      ARGS "apply ${CMAKE_SOURCE_DIR}/${PATCH}"
+      )
+  endforeach()
+  set(APPLY_PATCHES "OFF")
+endif()
 
 file(COPY
   clone/minimap.h
