@@ -3,12 +3,12 @@ cmake_minimum_required(VERSION 3.1.0)
 # This version should match the version of minimap2 used as closely as possible.
 # It might not match if we have to update the ont_minimap2 project itself.
 project(minimap2
-    VERSION 2.10.1
+    VERSION 2.17.0
     LANGUAGES C
 )
 
 # This is the reference of the minimap2 repo that we'll build into the library.
-set(MINIMAP2_REF "v2.10")
+set(MINIMAP2_REF "v2.17")
 
 include(FindZLIB)
 
@@ -48,7 +48,6 @@ if (NOT EXISTS ${CMAKE_SOURCE_DIR}/clone)
 	    # We've got a local fork of the main repo
 	    ARGS "clone https://github.com/lh3/minimap2.git clone"
 	)
-        set(APPLY_PATCHES "ON")
 else()
         message(STATUS "Existing clone of minimap2 found -- fetching without applying patches")
 	exec_program(
@@ -65,7 +64,7 @@ exec_program(
     ARGS "checkout ${MINIMAP2_REF}"
 )
 
-## Apply patches
+## Apply patches -- this isn't currently used but might be handy if we need to patch later.
 if(APPLY_PATCHES)
   file(GLOB
     PATCHES
@@ -124,7 +123,6 @@ if(ARM_BUILD)
 endif()
 
 add_library(libminimap2
-        clone/getopt.c
         clone/kthread.c
         clone/kalloc.c
         clone/ksw2_extz2_sse.c
@@ -143,6 +141,7 @@ add_library(libminimap2
         clone/format.c
         clone/pe.c
         clone/esterr.c
+        clone/splitidx.c
         clone/ksw2_ll_sse.c
 )
 
